@@ -394,12 +394,19 @@ public class BigchainDbTransactionBuilder {
                     || this.operation == Operations.INTEREST
                     || this.operation == Operations.PRE_REQUEST
                     || this.operation == Operations.BID
-                    || this.operation == Operations.ACCEPT) {
+                    || this.operation == Operations.ACCEPT
+                    || this.operation == Operations.ADVERTISEMENT
+                    || this.operation == Operations.BUY_OFFER
+                    || this.operation == Operations.SELL
+                    || this.operation == Operations.REQUEST_RETURN
+                    || this.operation == Operations.ACCEPT_RETURN) {
                 this.transaction.setOperation(this.operation.name());
             } else {
                 throw new Exception("Invalid Operations value. Accepted values are "
                         + "[Operations.CREATE, Operations.TRANSFER, Operations.REQUEST_FOR_QUOTE, "
-                        + "Operations.INTEREST, Operations.PRE_REQUEST, Operations.BID, Operations.ACCEPT]");
+                        + "Operations.INTEREST, Operations.PRE_REQUEST, Operations.BID, Operations.ACCEPT, "
+                        + "Operations.ADVERTISEMENT, Operations.BUY_OFFER, Operations.SELL, "
+                        + "Operations.REQUEST_RETURN, Operations.ACCEPT_RETURN]");
             }
 
             if (this.assets != null) {

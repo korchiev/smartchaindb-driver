@@ -28,7 +28,22 @@ public enum Operations {
 
 	BID("BID"),
 
-	ACCEPT("ACCEPT");
+	ACCEPT("ACCEPT"),
+
+	/** The advertisement. */
+	ADVERTISEMENT("ADVERTISEMENT"),
+
+	/** The buy offer. */
+	BUY_OFFER("BUY_OFFER"),
+
+	/** The sell. */
+	SELL("SELL"),
+
+	/** The request return. */
+	REQUEST_RETURN("REQUEST_RETURN"),
+
+	/** The accept return. */
+	ACCEPT_RETURN("ACCEPT_RETURN");
 
 
 	/** The value. */

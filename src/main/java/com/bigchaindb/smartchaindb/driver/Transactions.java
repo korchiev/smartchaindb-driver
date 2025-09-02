@@ -240,6 +240,229 @@ public class Transactions {
         }
     }
 
+    /**
+     * Creates an ADVERTISEMENT transaction for listing an asset for sale
+     *
+     * @param driver      BigchainDB driver instance
+     * @param assetId     ID of the asset to advertise
+     * @param metaData    Advertisement metadata (status, advertiser_public_key, price, etc.)
+     * @param keys        Keys to sign the transaction
+     * @return Transaction ID of the created advertisement
+     */
+    public static String doAdvertisement(BigchainDBJavaDriver driver, String assetId, MetaData metaData, KeyPair keys) throws Exception {
+        Transaction transaction = null;
+        
+        // Asset data for advertisement
+        Map<String, String> assetData = new TreeMap<String, String>();
+        assetData.put("id", assetId);
+        
+        try {
+            // Create input for the asset being advertised
+            FulFill fulfill = new FulFill();
+            fulfill.setOutputIndex(0);
+            fulfill.setTransactionId(assetId);
+            
+            BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
+                    .init()
+                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
+                    .addAssets(assetData, TreeMap.class)
+                    .addMetaData(metaData)
+                    .operation(Operations.ADVERTISEMENT)
+                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+            
+            transaction = builder.sendTransaction(driver.handleServerResponse("ADVERTISEMENT", metaData, null));
+            System.out.println("(*) ADVERTISEMENT Transaction sent.. - " + transaction.getId());
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return transaction != null ? transaction.getId() : null;
+    }
+    
+    /**
+     * Creates a BUY_OFFER transaction with escrow mechanism
+     *
+     * @param driver          BigchainDB driver instance
+     * @param assetId         ID of the asset being offered for
+     * @param advertisementId ID of the advertisement being responded to
+     * @param metaData        Buy offer metadata (buyer_public_key, offer_amount, escrow_public_key, etc.)
+     * @param keys            Keys to sign the transaction
+     * @param escrowKeys      Escrow account keys
+     * @return Transaction ID of the created buy offer
+     */
+    public static String doBuyOffer(BigchainDBJavaDriver driver, String assetId, String advertisementId, 
+                                   MetaData metaData, KeyPair keys, KeyPair escrowKeys) throws Exception {
+        Transaction transaction = null;
+        
+        // Asset data for buy offer
+        Map<String, String> assetData = new TreeMap<String, String>();
+        assetData.put("id", assetId);
+        assetData.put("advertisement_id", advertisementId);
+        
+        try {
+            // Create input for buyer's payment asset
+            FulFill fulfill = new FulFill();
+            fulfill.setOutputIndex(0);
+            fulfill.setTransactionId(assetId); // This should be the buyer's payment asset ID
+            
+            // Get offer amount from metadata
+            Double offerAmount = Double.parseDouble(metaData.getMetadata().get("offer_amount").toString());
+            
+            BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
+                    .init()
+                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
+                    .addOutput(offerAmount.toString(), (EdDSAPublicKey) escrowKeys.getPublic())
+                    .addAssets(assetData, TreeMap.class)
+                    .addMetaData(metaData)
+                    .operation(Operations.BUY_OFFER)
+                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+            
+            transaction = builder.sendTransaction(driver.handleServerResponse("BUY_OFFER", metaData, null));
+            System.out.println("(*) BUY_OFFER Transaction sent.. - " + transaction.getId());
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return transaction != null ? transaction.getId() : null;
+    }
+    
+    /**
+     * Creates a SELL transaction with atomic transfers
+     *
+     * @param driver      BigchainDB driver instance
+     * @param assetId     ID of the asset being sold
+     * @param buyOfferId  ID of the buy offer being accepted
+     * @param metaData    Sell metadata (seller_public_key, buyer_public_key, sale_amount, etc.)
+     * @param keys        Keys to sign the transaction
+     * @param buyerKeys   Buyer's keys for asset transfer
+     * @return Transaction ID of the created sell transaction
+     */
+    public static String doSell(BigchainDBJavaDriver driver, String assetId, String buyOfferId, 
+                               MetaData metaData, KeyPair keys, KeyPair buyerKeys) throws Exception {
+        Transaction transaction = null;
+        
+        // Asset data for sell
+        Map<String, String> assetData = new TreeMap<String, String>();
+        assetData.put("id", assetId);
+        assetData.put("buy_offer_id", buyOfferId);
+        
+        try {
+            // Create input for the asset being sold
+            FulFill fulfill = new FulFill();
+            fulfill.setOutputIndex(0);
+            fulfill.setTransactionId(assetId);
+            
+            // Get sale amount from metadata
+            Double saleAmount = Double.parseDouble(metaData.getMetadata().get("sale_amount").toString());
+            
+            BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
+                    .init()
+                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
+                    .addOutput("1", (EdDSAPublicKey) buyerKeys.getPublic()) // Asset transfer to buyer
+                    .addOutput(saleAmount.toString(), (EdDSAPublicKey) keys.getPublic()) // Payment to seller
+                    .addAssets(assetData, TreeMap.class)
+                    .addMetaData(metaData)
+                    .operation(Operations.SELL)
+                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+            
+            transaction = builder.sendTransaction(driver.handleServerResponse("SELL", metaData, null));
+            System.out.println("(*) SELL Transaction sent.. - " + transaction.getId());
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return transaction != null ? transaction.getId() : null;
+    }
+    
+    /**
+     * Creates a REQUEST_RETURN transaction
+     *
+     * @param driver            BigchainDB driver instance
+     * @param assetId           ID of the asset being returned
+     * @param sellTransactionId ID of the sell transaction being disputed
+     * @param metaData          Return request metadata (requester_public_key, return_reason, etc.)
+     * @param keys              Keys to sign the transaction
+     * @return Transaction ID of the created return request
+     */
+    public static String doRequestReturn(BigchainDBJavaDriver driver, String assetId, String sellTransactionId, 
+                                        MetaData metaData, KeyPair keys) throws Exception {
+        Transaction transaction = null;
+        
+        // Asset data for request return
+        Map<String, String> assetData = new TreeMap<String, String>();
+        assetData.put("id", assetId);
+        assetData.put("sell_transaction_id", sellTransactionId);
+        
+        try {
+            // Create input for the asset being returned
+            FulFill fulfill = new FulFill();
+            fulfill.setOutputIndex(0);
+            fulfill.setTransactionId(sellTransactionId);
+            
+            BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
+                    .init()
+                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
+                    .addAssets(assetData, TreeMap.class)
+                    .addMetaData(metaData)
+                    .operation(Operations.REQUEST_RETURN)
+                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+            
+            transaction = builder.sendTransaction(driver.handleServerResponse("REQUEST_RETURN", metaData, null));
+            System.out.println("(*) REQUEST_RETURN Transaction sent.. - " + transaction.getId());
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return transaction != null ? transaction.getId() : null;
+    }
+    
+    /**
+     * Creates an ACCEPT_RETURN transaction
+     *
+     * @param driver            BigchainDB driver instance
+     * @param assetId           ID of the asset being returned
+     * @param requestReturnId   ID of the return request being accepted
+     * @param metaData          Return acceptance metadata (accepter_public_key, refund_details, etc.)
+     * @param keys              Keys to sign the transaction
+     * @return Transaction ID of the created accept return transaction
+     */
+    public static String doAcceptReturn(BigchainDBJavaDriver driver, String assetId, String requestReturnId, 
+                                       MetaData metaData, KeyPair keys) throws Exception {
+        Transaction transaction = null;
+        
+        // Asset data for accept return
+        Map<String, String> assetData = new TreeMap<String, String>();
+        assetData.put("id", assetId);
+        assetData.put("request_return_id", requestReturnId);
+        
+        try {
+            // Create input for processing the return
+            FulFill fulfill = new FulFill();
+            fulfill.setOutputIndex(0);
+            fulfill.setTransactionId(requestReturnId);
+            
+            BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
+                    .init()
+                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
+                    .addAssets(assetData, TreeMap.class)
+                    .addMetaData(metaData)
+                    .operation(Operations.ACCEPT_RETURN)
+                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+            
+            transaction = builder.sendTransaction(driver.handleServerResponse("ACCEPT_RETURN", metaData, null));
+            System.out.println("(*) ACCEPT_RETURN Transaction sent.. - " + transaction.getId());
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return transaction != null ? transaction.getId() : null;
+    }
+
     private static Transaction validateTransaction(Map<String, String> assetData, MetaData metaData, KeyPair keys, Operations operation) throws Exception {
 
         BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
