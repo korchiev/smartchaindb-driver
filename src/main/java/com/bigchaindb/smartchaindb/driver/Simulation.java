@@ -101,7 +101,6 @@ public class Simulation {
                 }
             }
 
-            Thread.sleep(20000);
 
             for (int i = 0; i < allPreReqs.size(); i++) {
                 try {
@@ -203,7 +202,6 @@ public class Simulation {
             MetaData creMetaData = new MetaData();
             creMetaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
             createId = Transactions.doCreate(driver, cre_assetData, creMetaData, keys);
-            Thread.sleep(5000);
 
             //MetaData metaData1 = new MetaData();
             //metaData1.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
@@ -219,6 +217,33 @@ public class Simulation {
         }
 
         return createId;
+    }
+
+    public static String createAdvertisement(BigchainDBJavaDriver driver, KeyPair keys, String createId) {
+        String advertisementId = null;
+
+        try {
+            MetaData adMetaData = new MetaData();
+            adMetaData.setMetaData("status", "OPEN");
+            adMetaData.setMetaData("advertiser_public_key", 
+                ((net.i2p.crypto.eddsa.EdDSAPublicKey) keys.getPublic()).toString());
+            adMetaData.setMetaData("price", "1000.00");
+            adMetaData.setMetaData("description", "High-quality digital asset for sale");
+            adMetaData.setMetaData("category", "Digital Art");
+            adMetaData.setMetaData("condition", "New");
+            adMetaData.setMetaData("expiry_date", LocalDateTime.now(Clock.systemUTC()).plusDays(30).toString());
+            adMetaData.setMetaData("contact_info", "advertiser@example.com");
+            adMetaData.setMetaData("location", "New York, NY");
+            adMetaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
+
+            advertisementId = Transactions.doAdvertisement(driver, createId, adMetaData, keys);
+            System.out.println("(*) ADVERTISEMENT Transaction sent.. - " + advertisementId);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return advertisementId;
     }
 
     public static Transaction createBid(BigchainDBJavaDriver driver, KeyPair keys, String rfqId, String createId) {
@@ -246,7 +271,6 @@ public class Simulation {
             MetaData metaData2 = new MetaData();
             metaData2.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
             bid = Transactions.doBid(driver, createId, rfqId, metaData2, keys);
-            Thread.sleep(2000);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -263,7 +287,7 @@ public class Simulation {
         for (int i = RFQ_COUNT * ID; i < RFQ_COUNT * (ID + 1); i++) {
             String rfqId = RFQs.get(i);
             List<String> bids = TransactionsApi.getBidsForRFQ(rfqId);
-            Thread.sleep(2000);
+            
 
             System.out.println(bids);
             hmap.put(rfqId, bids);
@@ -281,7 +305,7 @@ public class Simulation {
                 metaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
 
                 Transactions.doAccept(driver, winningBid, entry.getKey(), metaData, keys);
-                Thread.sleep(3000);
+                
             }
         }
     }

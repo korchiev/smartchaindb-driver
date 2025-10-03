@@ -21,6 +21,12 @@ public class MarketplaceTransactionExamples {
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
+    private static String repeatChar(char ch, int count) {
+        char[] arr = new char[count];
+        java.util.Arrays.fill(arr, ch);
+        return new String(arr);
+    }
+
     /**
      * Example: Creating an ADVERTISEMENT transaction
      * 
@@ -238,7 +244,7 @@ public class MarketplaceTransactionExamples {
      */
     public static void demonstrateMarketplaceFlow(BigchainDBJavaDriver driver) throws Exception {
         System.out.println("🚀 SmartChainDB Marketplace Transaction Flow Demo");
-        System.out.println("=" * 60);
+        System.out.println(repeatChar('=', 60));
         
         // Generate keypairs for all participants
         KeyPair advertiserKeys = BigchainDBJavaDriver.getKeys();
@@ -282,9 +288,9 @@ public class MarketplaceTransactionExamples {
         }
         
         // Summary
-        System.out.println("\n" + "=" * 60);
+        System.out.println("\n" + repeatChar('=', 60));
         System.out.println("📊 Marketplace Transaction Flow Summary:");
-        System.out.println("=" * 60);
+        System.out.println(repeatChar('=', 60));
         
         String[] transactionTypes = {"ADVERTISEMENT", "BUY_OFFER", "SELL", "REQUEST_RETURN", "ACCEPT_RETURN"};
         String[] transactionIds = {advertisementId, buyOfferId, sellId, requestReturnId, acceptReturnId};

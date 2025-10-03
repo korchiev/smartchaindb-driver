@@ -257,10 +257,14 @@ public class Transactions {
         assetData.put("id", assetId);
         
         try {
-            // Create input for the asset being advertised
+            // For ADVERTISEMENT, we need to reference the CREATE transaction's UTXO
+            // The assetId should be the CREATE transaction ID
+            // We need to get the CREATE transaction to find the correct UTXO to reference
+            
+            // Create input for the CREATE transaction's output (UTXO)
             FulFill fulfill = new FulFill();
-            fulfill.setOutputIndex(0);
-            fulfill.setTransactionId(assetId);
+            fulfill.setOutputIndex(0); // First output of CREATE transaction
+            fulfill.setTransactionId(assetId); // CREATE transaction ID
             
             BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
                     .init()
@@ -278,6 +282,31 @@ public class Transactions {
         }
         
         return transaction != null ? transaction.getId() : null;
+    }
+
+    /**
+     * Convenience: creates a new asset via CREATE and immediately ADVERTISES it.
+     * Ensures the ADVERTISEMENT references a valid CREATE transaction id.
+     *
+     * @param driver      BigchainDB driver instance
+     * @param assetData   Asset payload to be used in the CREATE transaction
+     * @param adMetaData  Advertisement metadata
+     * @param keys        Keys to sign the transactions
+     * @return The ADVERTISEMENT transaction id, or null if creation failed
+     */
+    public static String doCreateThenAdvertise(BigchainDBJavaDriver driver,
+                                               Map<String, Object> assetData,
+                                               MetaData adMetaData,
+                                               KeyPair keys) throws Exception {
+        // 1) CREATE the asset
+        MetaData emptyCreateMeta = new MetaData();
+        String createdAssetTxId = doCreate(driver, assetData, emptyCreateMeta, keys);
+        if (createdAssetTxId == null) {
+            return null;
+        }
+
+        // 2) ADVERTISE referencing the created asset id
+        return doAdvertisement(driver, createdAssetTxId, adMetaData, keys);
     }
     
     /**

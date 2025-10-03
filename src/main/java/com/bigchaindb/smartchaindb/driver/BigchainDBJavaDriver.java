@@ -58,22 +58,36 @@ public class BigchainDBJavaDriver {
         List<String> rfq_ids = new ArrayList<>();
         List<String> create_ids = new ArrayList<>();
         List<String> win_bid_ids = new ArrayList<>();
+        List<String> advertisement_ids = new ArrayList<>();
         Transaction winningBid = null;
         int rfq_count = 200;
         int create_count = 5000;
         int bid_count = 5000;
         int bids_per_rfq = 25;
+        int advertisement_count = 100;
         int counter = 0;
+        
         //create rfqs 
         for(int j = 0; j < rfq_count; j++) {
             Transaction rfq = Simulation.createRFQ(driver, keys, null);
             rfq_ids.add(rfq.getId());
         }
+        
         // create assests seperately 
         for(int k = 0; k < create_count; k++) {
             String createId = Simulation.createCreate(driver, keys);
             create_ids.add(createId);
         }
+        
+        // create advertisements for some assets
+        for(int k = 0; k < advertisement_count; k++) {
+            String createId = create_ids.get(k);
+            String advertisementId = Simulation.createAdvertisement(driver, keys, createId);
+            if (advertisementId != null) {
+                advertisement_ids.add(advertisementId);
+            }
+        }
+        
         for(int i = 0; i  < rfq_ids.size() ; i++){
             String rfqId = rfq_ids.get(i);
             List<Transaction> bids = new ArrayList<>();
@@ -109,18 +123,18 @@ public class BigchainDBJavaDriver {
         BigchainDbConfigBuilder.baseUrl("http://localhost:9984/").setup();
 
         // Multi-Node Setup
-        List<Connection> connections = new ArrayList<>();
-        for (String url : DriverConstants.VALIDATOR_NODES) {
-            Map<String, Object> attributes = new TreeMap<>();
-            attributes.put("baseUrl", url);
-            connections.add(new Connection(attributes));
-        }
+        // List<Connection> connections = new ArrayList<>();
+        // for (String url : DriverConstants.VALIDATOR_NODES) {
+        //     Map<String, Object> attributes = new TreeMap<>();
+        //     attributes.put("baseUrl", url);
+        //     connections.add(new Connection(attributes));
+        // }
 
 
-         BigchainDbConfigBuilder
-                .addConnections(connections)
-                .setTimeout(60000)
-                .setup();
+        //  BigchainDbConfigBuilder
+        //         .addConnections(connections)
+        //         .setTimeout(60000)
+        //         .setup();
     }
 
     /**
