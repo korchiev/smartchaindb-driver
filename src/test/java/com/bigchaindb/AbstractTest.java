@@ -47,13 +47,14 @@ public abstract class AbstractTest
 	{
 		Properties props = new Properties();
 
-		try( InputStream input = new FileInputStream( getInputFile( bdbDriverProperties, "test.properties" ) )) {
+		try( InputStream input = Thread.currentThread().getContextClassLoader().getResourceAsStream( "test.properties" )) {
+			if (input == null) {
+				System.err.println( "cannot find test.properties on classpath" );
+				throw new RuntimeException( "cannot find test.properties on classpath" );
+			}
 			props.load( input );
-		} catch( FileNotFoundException ex ) {
-			System.err.println( "cannot find test.properties, set environment variable test.properties with path name to a test properties file" );
-			throw new RuntimeException( "cannot find test.properties, set environment variable test.properties with path name to a test properties file", ex );
 		} catch( IOException ex ) {
-			throw new RuntimeException( "Error reading properties files " + env.getOrDefault( bdbDriverProperties, "test.properties" ), ex );
+			throw new RuntimeException( "Error reading properties file test.properties", ex );
 		}
 		
 		return props;
@@ -85,7 +86,26 @@ public abstract class AbstractTest
 		}
 
 		url = Thread.currentThread().getContextClassLoader().getResource( propertiesFile );
-		return url.getFile();
+		if (url == null) {
+			System.err.println( "Error: Cannot find properties file " + propertiesFile + " on classpath" );
+			throw new RuntimeException( "Cannot find properties file " + propertiesFile + " on classpath" );
+		}
+		
+		// Handle both file:// URLs and jar: URLs
+		if ("file".equals(url.getProtocol())) {
+			return url.getFile();
+		} else {
+			// For jar: URLs or other protocols, try to get the resource as a stream
+			try (InputStream input = Thread.currentThread().getContextClassLoader().getResourceAsStream(propertiesFile)) {
+				if (input == null) {
+					throw new RuntimeException( "Cannot find properties file " + propertiesFile + " on classpath" );
+				}
+				// Return a temporary file path or handle differently
+				return propertiesFile; // Fallback to just the filename
+			} catch (IOException e) {
+				throw new RuntimeException( "Error accessing properties file " + propertiesFile, e );
+			}
+		}
 	}
 
 	/**

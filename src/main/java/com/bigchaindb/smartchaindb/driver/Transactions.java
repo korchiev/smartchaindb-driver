@@ -252,24 +252,14 @@ public class Transactions {
     public static String doAdvertisement(BigchainDBJavaDriver driver, String assetId, MetaData metaData, KeyPair keys) throws Exception {
         Transaction transaction = null;
         
-        // Asset data for advertisement
-        Map<String, String> assetData = new TreeMap<String, String>();
-        assetData.put("id", assetId);
-        
         try {
-            // For ADVERTISEMENT, we need to reference the CREATE transaction's UTXO
-            // The assetId should be the CREATE transaction ID
-            // We need to get the CREATE transaction to find the correct UTXO to reference
-            
-            // Create input for the CREATE transaction's output (UTXO)
-            FulFill fulfill = new FulFill();
-            fulfill.setOutputIndex(0); // First output of CREATE transaction
-            fulfill.setTransactionId(assetId); // CREATE transaction ID
+            // For ADVERTISEMENT, we don't fulfill anything - just announce availability
+            // Similar to CREATE transactions, ADVERTISEMENT transactions have no inputs to fulfill
             
             BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
                     .init()
-                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
-                    .addAssets(assetData, TreeMap.class)
+                    .addInput(null, null, (EdDSAPublicKey) keys.getPublic()) // null fulfill = no fulfillment
+                    .addAssets(assetId, String.class) // set asset.id (not asset.data)
                     .addMetaData(metaData)
                     .operation(Operations.ADVERTISEMENT)
                     .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
@@ -324,25 +314,27 @@ public class Transactions {
                                    MetaData metaData, KeyPair keys, KeyPair escrowKeys) throws Exception {
         Transaction transaction = null;
         
-        // Asset data for buy offer
-        Map<String, String> assetData = new TreeMap<String, String>();
+        // Asset data for buy offer - need asset.id and asset.data.advertisement_id
+        Map<String, Object> assetData = new TreeMap<String, Object>();
         assetData.put("id", assetId);
-        assetData.put("advertisement_id", advertisementId);
+        assetData.put("advertisement_id", advertisementId); // This will go under asset.data
         
         try {
             // Create input for buyer's payment asset
             FulFill fulfill = new FulFill();
             fulfill.setOutputIndex(0);
-            fulfill.setTransactionId(assetId); // This should be the buyer's payment asset ID
+            // Use payment_asset_id from metadata if provided, otherwise use assetId (old behavior)
+            String paymentAssetId = (String) metaData.getMetadata().get("payment_asset_id");
+            fulfill.setTransactionId(paymentAssetId != null ? paymentAssetId : assetId);
             
-            // Get offer amount from metadata
-            Double offerAmount = Double.parseDouble(metaData.getMetadata().get("offer_amount").toString());
+            // Get offer amount from metadata (must be an integer string per schema)
+            String offerAmount = metaData.getMetadata().get("offer_amount").toString();
             
             BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
                     .init()
                     .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
-                    .addOutput(offerAmount.toString(), (EdDSAPublicKey) escrowKeys.getPublic())
-                    .addAssets(assetData, TreeMap.class)
+                    .addOutput(offerAmount, (EdDSAPublicKey) escrowKeys.getPublic())
+                    .addAssets(assetData, Map.class)
                     .addMetaData(metaData)
                     .operation(Operations.BUY_OFFER)
                     .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
@@ -369,32 +361,36 @@ public class Transactions {
      * @return Transaction ID of the created sell transaction
      */
     public static String doSell(BigchainDBJavaDriver driver, String assetId, String buyOfferId, 
-                               MetaData metaData, KeyPair keys, KeyPair buyerKeys) throws Exception {
+                               MetaData metaData, KeyPair sellerKeys, KeyPair buyerKeys, KeyPair escrowKeys) throws Exception {
         Transaction transaction = null;
         
-        // Asset data for sell
-        Map<String, String> assetData = new TreeMap<String, String>();
+        // Asset data for sell - need asset.id and asset.data.buy_offer_id
+        Map<String, Object> assetData = new TreeMap<String, Object>();
         assetData.put("id", assetId);
-        assetData.put("buy_offer_id", buyOfferId);
+        assetData.put("buy_offer_id", buyOfferId); // This will go under asset.data
         
         try {
-            // Create input for the asset being sold
-            FulFill fulfill = new FulFill();
-            fulfill.setOutputIndex(0);
-            fulfill.setTransactionId(assetId);
+            // Note: SELL has one input (seller's asset) and two outputs (asset→buyer, payment→seller)
+            // The escrowed payment from BUY_OFFER is validated but not spent as a UTXO input
+            // This is a simplified atomic swap where the payment transfer is implicit
             
-            // Get sale amount from metadata
-            Double saleAmount = Double.parseDouble(metaData.getMetadata().get("sale_amount").toString());
+            // Input: Seller's asset
+            FulFill assetFulfill = new FulFill();
+            assetFulfill.setOutputIndex(0);
+            assetFulfill.setTransactionId(assetId);
+            
+            // Get sale amount from metadata (must be an integer string per schema)
+            String saleAmount = metaData.getMetadata().get("sale_amount").toString();
             
             BigchainDbTransactionBuilder.IBuild builder = BigchainDbTransactionBuilder
                     .init()
-                    .addInput(null, fulfill, (EdDSAPublicKey) keys.getPublic())
-                    .addOutput("1", (EdDSAPublicKey) buyerKeys.getPublic()) // Asset transfer to buyer
-                    .addOutput(saleAmount.toString(), (EdDSAPublicKey) keys.getPublic()) // Payment to seller
-                    .addAssets(assetData, TreeMap.class)
+                    .addInput(null, assetFulfill, (EdDSAPublicKey) sellerKeys.getPublic())  // Seller signs for asset
+                    .addOutput("1", (EdDSAPublicKey) buyerKeys.getPublic())     // Output 1: Asset → Buyer
+                    .addOutput(saleAmount, (EdDSAPublicKey) sellerKeys.getPublic()) // Output 2: Payment → Seller
+                    .addAssets(assetData, Map.class)
                     .addMetaData(metaData)
                     .operation(Operations.SELL)
-                    .buildAndSign((EdDSAPublicKey) keys.getPublic(), (EdDSAPrivateKey) keys.getPrivate());
+                    .buildAndSign((EdDSAPublicKey) sellerKeys.getPublic(), (EdDSAPrivateKey) sellerKeys.getPrivate());
             
             transaction = builder.sendTransaction(driver.handleServerResponse("SELL", metaData, null));
             System.out.println("(*) SELL Transaction sent.. - " + transaction.getId());

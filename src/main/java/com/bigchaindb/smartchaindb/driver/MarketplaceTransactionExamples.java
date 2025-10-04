@@ -130,8 +130,9 @@ public class MarketplaceTransactionExamples {
         metaData.setMetaData("sale_timestamp", LocalDateTime.now(Clock.systemUTC()).format(ISO_FORMATTER));
         metaData.setMetaData("sale_notes", "Asset sold as agreed in buy offer");
         
-        // Create sell transaction
-        String sellId = Transactions.doSell(driver, assetId, buyOfferId, metaData, sellerKeys, buyerKeys);
+        // Create sell transaction (need escrow keys for atomic swap)
+        // For now, using seller keys as escrow (in production, use dedicated escrow service)
+        String sellId = Transactions.doSell(driver, assetId, buyOfferId, metaData, sellerKeys, buyerKeys, sellerKeys);
         
         if (sellId != null) {
             System.out.println(" Sell transaction created successfully");

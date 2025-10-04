@@ -14,9 +14,15 @@ import java.security.KeyPair;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import net.i2p.crypto.eddsa.EdDSAPublicKey;
+import com.bigchaindb.util.KeyPairUtils;
 
 public class Simulation {
+
+    // DateTime formatter for proper timestamp format (with microseconds)
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
 
 //    private static final Producer<String, String> producer = ProducerDriver.createProducer("requestor-"
 //            + LocalDateTime.now().toString());
@@ -225,25 +231,113 @@ public class Simulation {
         try {
             MetaData adMetaData = new MetaData();
             adMetaData.setMetaData("status", "OPEN");
-            adMetaData.setMetaData("advertiser_public_key", 
-                ((net.i2p.crypto.eddsa.EdDSAPublicKey) keys.getPublic()).toString());
+            adMetaData.setMetaData("advertiser_public_key", KeyPairUtils.encodePublicKeyInBase58((EdDSAPublicKey) keys.getPublic()));
             adMetaData.setMetaData("price", "1000.00");
             adMetaData.setMetaData("description", "High-quality digital asset for sale");
             adMetaData.setMetaData("category", "Digital Art");
             adMetaData.setMetaData("condition", "New");
-            adMetaData.setMetaData("expiry_date", LocalDateTime.now(Clock.systemUTC()).plusDays(30).toString());
+            adMetaData.setMetaData("expiry_date", LocalDateTime.now(Clock.systemUTC()).plusDays(30).format(TIMESTAMP_FORMATTER));
             adMetaData.setMetaData("contact_info", "advertiser@example.com");
             adMetaData.setMetaData("location", "New York, NY");
-            adMetaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).toString());
+            adMetaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+            // adMetaData.setMetaData("is_new_advertisement", true); // Flag for validation testing - REMOVED
 
             advertisementId = Transactions.doAdvertisement(driver, createId, adMetaData, keys);
             System.out.println("(*) ADVERTISEMENT Transaction sent.. - " + advertisementId);
 
         } catch (Exception e) {
+            System.out.println("(*) ADVERTISEMENT Transaction failed: " + e.getMessage());
             e.printStackTrace();
         }
 
         return advertisementId;
+    }
+
+    public static String createBuyOffer(
+            BigchainDBJavaDriver driver,
+            KeyPair buyerKeys,
+            KeyPair escrowKeys,
+            String assetId,
+            String advertisementId
+    ) {
+        String buyOfferId = null;
+        try {
+            // Step 1: Create a legitimate payment asset for the buyer (their funds)
+            // This represents the buyer's currency/payment method that will be transferred to escrow
+            Map<String, Object> capabilityParams = new TreeMap<>();
+            capabilityParams.put("assetType", "currency");
+            capabilityParams.put("currency", "USD");
+            capabilityParams.put("value", "900");
+            
+            Map<String, Object> paymentAsset = new TreeMap<>();
+            paymentAsset.put("machineIdentifier", "buyer-payment-fund-" + System.currentTimeMillis());
+            paymentAsset.put("capability", java.util.Arrays.asList("payment", "transfer", "escrow"));
+            paymentAsset.put("capabilityParameters", capabilityParams);
+            
+            MetaData paymentMetaData = new MetaData();
+            paymentMetaData.setMetaData("purpose", "Payment funds for buy offer");
+            paymentMetaData.setMetaData("amount", "900");
+            paymentMetaData.setMetaData("currency", "USD");
+            paymentMetaData.setMetaData("owner", com.bigchaindb.util.KeyPairUtils.encodePublicKeyInBase58((net.i2p.crypto.eddsa.EdDSAPublicKey) buyerKeys.getPublic()));
+            paymentMetaData.setMetaData("timestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+            paymentMetaData.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+            
+            String paymentAssetId = Transactions.doCreate(driver, paymentAsset, paymentMetaData, buyerKeys);
+            System.out.println("(*) Created buyer payment asset (legitimate funds): " + paymentAssetId);
+            
+            // Wait longer for transaction to be committed to the blockchain
+            System.out.println("(*) Waiting for payment asset to be committed...");
+            Thread.sleep(5000);
+            
+            // Step 2: Create the BUY_OFFER using the payment asset as input
+            MetaData meta = new MetaData();
+            meta.setMetaData("buyer_public_key",
+                com.bigchaindb.util.KeyPairUtils.encodePublicKeyInBase58((net.i2p.crypto.eddsa.EdDSAPublicKey) buyerKeys.getPublic()));
+            meta.setMetaData("offer_amount", "900");
+            meta.setMetaData("offer_currency", "USD");
+            meta.setMetaData("offer_timestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+            meta.setMetaData("offer_expiry", LocalDateTime.now(Clock.systemUTC()).plusDays(1).format(TIMESTAMP_FORMATTER));
+            meta.setMetaData("escrow_public_key",
+                com.bigchaindb.util.KeyPairUtils.encodePublicKeyInBase58((net.i2p.crypto.eddsa.EdDSAPublicKey) escrowKeys.getPublic()));
+            meta.setMetaData("payment_asset_id", paymentAssetId); // Pass payment asset ID via metadata
+            meta.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+
+            buyOfferId = Transactions.doBuyOffer(driver, assetId, advertisementId, meta, buyerKeys, escrowKeys);
+            System.out.println("(*) BUY_OFFER Transaction sent.. - " + buyOfferId);
+        } catch (Exception e) {
+            System.out.println("(*) BUY_OFFER Transaction failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return buyOfferId;
+    }
+
+    public static String createSell(
+            BigchainDBJavaDriver driver,
+            KeyPair sellerKeys,
+            KeyPair buyerKeys,
+            KeyPair escrowKeys,
+            String assetId,
+            String buyOfferId
+    ) {
+        String sellId = null;
+        try {
+            MetaData meta = new MetaData();
+            meta.setMetaData("seller_public_key",
+                com.bigchaindb.util.KeyPairUtils.encodePublicKeyInBase58((net.i2p.crypto.eddsa.EdDSAPublicKey) sellerKeys.getPublic()));
+            meta.setMetaData("buyer_public_key",
+                com.bigchaindb.util.KeyPairUtils.encodePublicKeyInBase58((net.i2p.crypto.eddsa.EdDSAPublicKey) buyerKeys.getPublic()));
+            meta.setMetaData("sale_amount", "900");
+            meta.setMetaData("sale_currency", "USD");
+            meta.setMetaData("sale_timestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+            meta.setMetaData("requestCreationTimestamp", LocalDateTime.now(Clock.systemUTC()).format(TIMESTAMP_FORMATTER));
+
+            sellId = Transactions.doSell(driver, assetId, buyOfferId, meta, sellerKeys, buyerKeys, escrowKeys);
+            System.out.println("(*) SELL Transaction sent.. - " + sellId);
+        } catch (Exception e) {
+            System.out.println("(*) SELL Transaction failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return sellId;
     }
 
     public static Transaction createBid(BigchainDBJavaDriver driver, KeyPair keys, String rfqId, String createId) {
